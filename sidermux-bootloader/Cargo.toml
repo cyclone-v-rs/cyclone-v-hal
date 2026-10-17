@@ -17,6 +17,9 @@ test  = false
 # feature forwards the SoC and architecture selection to the HAL and runtime.
 cyclone-v = ["sidermux-hal/cyclone-v", "sidermux-rt/armv7a"]
 
+# Board selection: implies its SoC and forwards the board configuration.
+board-de1-soc = ["cyclone-v", "sidermux-hal/board-de1-soc"]
+
 [dependencies]
 sidermux-hal = {path = "../sidermux-hal"}
 sidermux-rt = {path = "../sidermux-rt"}
