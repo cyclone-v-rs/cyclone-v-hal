@@ -36,6 +36,10 @@ ASSERT(SIZEOF(.boot_vectors) > 0,
 ASSERT(SIZEOF(.boot_vectors) <= 0x40,
     "Boot vectors overlap the header");
 
+/* VBAR requires a 32-byte-aligned vector base. */
+ASSERT((ADDR(.boot_vectors) & 0x1F) == 0,
+    "Boot vectors must be 32-byte aligned for VBAR");
+
 ASSERT(SIZEOF(.boot_entry) == 4,
     "Boot entry must contain one 4-byte ARM branch");
 

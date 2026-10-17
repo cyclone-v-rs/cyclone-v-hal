@@ -7,6 +7,10 @@
  * r1 = rom_info_len). The conventions are independent; the runtime currently
  * forwards the incoming registers unchanged.
  *
+ * Entry sequence:
+ *   mask IRQ/FIQ -> select Supervisor mode -> initialize SVC stack
+ *   -> configure vector selection and VBAR -> clear BSS -> boot_main
+ *
  * Entry-state assumptions (Supervisor mode, IRQ/FIQ masked, cache/MMU in
  * Boot ROM state) are Cyclone V-scoped and must be re-examined per SoC.
  */
@@ -26,6 +30,21 @@ _start:
     /* Select Supervisor mode and initialize its stack. */
     cps #0x13
     ldr sp, =__stack_top
+
+    /*
+     * Select VBAR-based vectors:
+     * SCTLR.V, bit 13, selects fixed high vectors when set.
+     */
+    mrc p15, 0, r2, c1, c0, 0
+    bic r2, r2, #0x2000
+    mcr p15, 0, r2, c1, c0, 0
+
+    /* Install our 32-byte-aligned exception-vector table. */
+    ldr r2, =__vectors_start
+    mcr p15, 0, r2, c12, c0, 0
+
+    /* Synchronize subsequent execution with these changes. */
+    isb
 
     /*
      * Preserve incoming r0/r1.
