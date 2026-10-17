@@ -50,11 +50,11 @@ jobs:
           - name: hal host
             args: -p sidermux-hal --all-targets
           - name: hal host all-features
-            args: -p sidermux-hal --all-targets --features cyclone-v,arch-armv7a
+            args: -p sidermux-hal --all-targets --all-features
           - name: rt armv7a
             args: -p sidermux-rt --target armv7a-none-eabi --features armv7a
-          - name: bootloader cyclone-v
-            args: -p sidermux-bootloader --target armv7a-none-eabi --features cyclone-v
+          - name: bootloader board-de1-soc
+            args: -p sidermux-bootloader --target armv7a-none-eabi --features board-de1-soc
     steps:
       - uses: actions/checkout@v4
 
