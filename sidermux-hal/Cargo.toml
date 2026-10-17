@@ -18,4 +18,7 @@ cyclone-v = ["arch-armv7a"]
 # several SoCs can share; binaries must still pick exactly one SoC.
 arch-armv7a = []
 
+# Boards. Each board implies the SoC it is built on.
+board-de1-soc = ["cyclone-v"]
+
 [dependencies]

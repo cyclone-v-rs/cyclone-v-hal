@@ -13,6 +13,12 @@
 //! stage. The runtime's outgoing `boot_main` convention is defined by
 //! `sidermux-rt` and is independent of the incoming registers.
 
+pub mod clocks;
+pub mod pac;
+pub mod pinmux;
+pub mod reset;
+pub mod uart;
+
 /// Base of the OCRAM window the Boot ROM loads the boot image into.
 pub const BOOT_IMAGE_BASE: usize = 0xFFFF_0000;
 /// Offset of the Boot ROM header slot within the boot image.
@@ -21,14 +27,6 @@ pub const BOOT_HEADER_OFFSET: usize = 0x40;
 pub const BOOT_ENTRY_OFFSET: usize = 0x4C;
 /// Boot arena currently sized by the Cyclone V boot profile.
 pub const BOOT_ARENA_SIZE: usize = 60 * 1024;
-
-/// Base of HPS Watchdog Timer 0 (DesignWare-style register block).
-const WDT0_BASE: usize = 0xFFD0_2000;
-/// Offset of `WDT_CR` (control; bit 0 enables the watchdog).
-const WDT0_CR: usize = 0x00;
-/// Offset of `WDT_CRR` (counter restart; `0x76` services the counter).
-const WDT0_CRR: usize = 0x0C;
-const WDT_RESTART_MAGIC: u32 = 0x76;
 
 /// Disable the watchdog left running by the Boot ROM.
 ///
@@ -49,3 +47,11 @@ pub fn watchdog_disable() {
         core::ptr::write_volatile((WDT0_BASE + WDT0_CR) as *mut u32, control & !0x1);
     }
 }
+
+/// Base of HPS Watchdog Timer 0 (DesignWare-style register block).
+const WDT0_BASE: usize = 0xFFD0_2000;
+/// Offset of `WDT_CR` (control; bit 0 enables the watchdog).
+const WDT0_CR: usize = 0x00;
+/// Offset of `WDT_CRR` (counter restart; `0x76` services the counter).
+const WDT0_CRR: usize = 0x0C;
+const WDT_RESTART_MAGIC: u32 = 0x76;
