@@ -2,6 +2,7 @@
 name = "sidermux-rt"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.95.0"
 description = "Runtime startup for sidermux targets, selected per architecture"
 repository = "https://github.com/sidermux/sidermux-hal"
 license = "MIT OR Apache-2.0"
@@ -12,3 +13,7 @@ license = "MIT OR Apache-2.0"
 armv7a = []
 
 [dependencies]
+
+[package.metadata.docs.rs]
+targets = ["armv7a-none-eabi"]
+all-features = true

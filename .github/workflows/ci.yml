@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -38,7 +45,13 @@ jobs:
       # Target-independent tests and doc tests. sidermux-bootloader is a
       # no-std image binary that requires a SoC feature and has no test
       # harness, so it is exercised by the clippy/build matrix instead.
+      - run: cargo test -p sidermux-pac --no-default-features
+      - run: cargo test -p sidermux-pac --all-features
       - run: cargo test -p sidermux-hal --all-features
+      - run: cargo test -p sidermux-bsp --no-default-features
+      - run: cargo test -p sidermux-bsp --all-features
+      - run: cargo test -p sidermux-hal --no-default-features
+      - run: cargo test -p sidermux-rt --no-default-features
 
   clippy:
     name: clippy (${{ matrix.name }})
@@ -47,10 +60,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: pac host
+            args: -p sidermux-pac --all-targets --no-default-features
+          - name: pac host all-features
+            args: -p sidermux-pac --all-targets --all-features
+          - name: pac armv7a
+            args: -p sidermux-pac --target armv7a-none-eabi --features cyclone-v
           - name: hal host
             args: -p sidermux-hal --all-targets
           - name: hal host all-features
             args: -p sidermux-hal --all-targets --all-features
+          - name: hal armv7a
+            args: -p sidermux-hal --target armv7a-none-eabi --all-features
+          - name: rt host
+            args: -p sidermux-rt --all-targets --no-default-features
+          - name: bsp host
+            args: -p sidermux-bsp --all-targets --no-default-features
+          - name: bsp host all-features
+            args: -p sidermux-bsp --all-targets --all-features
+          - name: bsp armv7a no-features
+            args: -p sidermux-bsp --target armv7a-none-eabi --no-default-features
+          - name: bsp armv7a
+            args: -p sidermux-bsp --target armv7a-none-eabi --features board-de1-soc
           - name: rt armv7a
             args: -p sidermux-rt --target armv7a-none-eabi --features armv7a
           - name: bootloader board-de1-soc
@@ -68,3 +99,40 @@ jobs:
           key: ${{ matrix.name }}
 
       - run: cargo clippy ${{ matrix.args }} -- -D warnings
+
+      - if: matrix.name == 'bootloader board-de1-soc'
+        run: cargo build -p sidermux-bootloader --target armv7a-none-eabi --features board-de1-soc --release
+
+  docs:
+    name: documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7a-none-eabi
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: docs
+      - run: cargo doc --workspace --all-features --no-deps --target armv7a-none-eabi
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  package:
+    name: package verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7a-none-eabi
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: package
+      # Cargo stages workspace dependencies locally, so unpublished crates
+      # are verified together without uploading anything to crates.io.
+      - run: cargo package --workspace --all-features --target armv7a-none-eabi
+        env:
+          # Package verification uses dev builds; optimize the bare-metal
+          # boot image so it fits the fixed 60 KiB OCRAM arena.
+          CARGO_PROFILE_DEV_OPT_LEVEL: s
