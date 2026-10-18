@@ -1,33 +1,37 @@
-//! Reset manager operations: releasing peripherals from module reset.
+//! Reset-manager operations on an exclusively owned register block.
+use sidermux_pac::prelude::*;
 
-use core::ptr;
+use super::pac::{ClockManager, ResetManager, clock_manager, reset_manager};
 
-use super::pac::{clock_manager, reset_manager};
-
-/// Releases UART0 from peripheral module reset.
-///
-/// Ensures the L4 SP clock gate is on, then clears the UART0 bit in
-/// `PERMODRST`. Peripheral module reset bits are level-sensitive: writing 0
-/// deasserts the reset.
-pub fn release_uart0() {
-    // Clock gate for the L4 SP domain feeding UART0.
-    let en = unsafe {
-        ptr::read_volatile((clock_manager::CLKMGR_BASE + clock_manager::MAINPLL_EN) as *const u32)
-    };
-    unsafe {
-        ptr::write_volatile(
-            (clock_manager::CLKMGR_BASE + clock_manager::MAINPLL_EN) as *mut u32,
-            en | clock_manager::MAINPLL_EN_L4SPCLK,
-        );
-    }
-
-    let rst = unsafe {
-        ptr::read_volatile((reset_manager::RSTMGR_BASE + reset_manager::PERMODRST) as *const u32)
-    };
-    unsafe {
-        ptr::write_volatile(
-            (reset_manager::RSTMGR_BASE + reset_manager::PERMODRST) as *mut u32,
-            rst & !reset_manager::PERMODRST_UART0,
-        );
-    }
+pub fn prepare_io(reset: &mut ResetManager) {
+    let keep = reset_manager::PERMODRST_WATCHDOG0
+        | reset_manager::PERMODRST_WATCHDOG1
+        | reset_manager::PERMODRST_OSC1TIMER0;
+    reset
+        .peripheral
+        .set((reset.peripheral.get() & keep) | !keep);
+    reset.peripheral2.set(u32::MAX);
+    let old = reset.misc.get();
+    reset.misc.set(old | reset_manager::MISCMODRST_SCANMGR);
+    reset.misc.set(old & !reset_manager::MISCMODRST_SCANMGR);
+}
+pub fn cause(reset: &ResetManager) -> u32 {
+    reset.stat.get()
+}
+pub fn peripheral_state(reset: &ResetManager) -> u32 {
+    reset.peripheral.get()
+}
+pub fn uart0_released(reset: &ResetManager) -> bool {
+    !reset
+        .peripheral
+        .is_set(reset_manager::PeripheralReset::UART0)
+}
+pub fn release_uart0(reset: &mut ResetManager, clocks: &mut ClockManager) {
+    clocks
+        .main_enable
+        .modify(clock_manager::MainEnable::L4SP::SET);
+    reset
+        .peripheral
+        .modify(reset_manager::PeripheralReset::UART0::CLEAR);
+    let _ = reset.peripheral.get();
 }

@@ -12,13 +12,14 @@ license       = "MIT OR Apache-2.0"
 [features]
 # SoC targets. Each SoC implies the architecture family it is built on;
 # the bootloader forwards its own SoC feature to these.
-cyclone-v = ["arch-armv7a"]
+cyclone-v = ["arch-armv7a", "sidermux-pac/cyclone-v"]
 
 # Architecture support. Selectable without a SoC for CPU-level code that
 # several SoCs can share; binaries must still pick exactly one SoC.
 arch-armv7a = []
 
-# Boards. Each board implies the SoC it is built on.
-board-de1-soc = ["cyclone-v"]
-
 [dependencies]
+sidermux-pac = { path = "../sidermux-pac", version = "0.1.0", default-features = false }
+
+[package.metadata.docs.rs]
+all-features = true

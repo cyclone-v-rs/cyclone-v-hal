@@ -12,7 +12,7 @@
   </picture>
 
   <p>
-    <strong>Unified bare-metal HAL surface for SoC FPGAs: architecture, SoC, and board support in one crate.</strong>
+    <strong>Reusable architecture and SoC drivers for SoC FPGAs.</strong>
   </p>
 
   <p>
@@ -26,7 +26,7 @@
 
 ---
 
-Cyclone V is the first supported SoC. SoC, architecture, and board support
+Cyclone V is the first supported SoC. SoC and architecture support
 are feature-gated modules behind one unified surface; no additional
 hardware families are claimed as supported.
 
@@ -42,7 +42,6 @@ The crate builds target-independent with no SoC selected.
 ```text
 src/
 ├── arch/            # CPU-level operations, shared by SoCs on the same core
-├── boards/          # installed DDR geometry and board hardware settings
 └── soc/             # physical memory maps and Boot ROM contracts
     └── cyclone_v/   # OCRAM window, handoff contract, physical memory.x
 ```
@@ -51,11 +50,18 @@ src/
 
 | Concern | Owner |
 |---|---|
-| Physical addresses and capacities | `soc` |
+| Peripheral register addresses, layouts and fields | `sidermux-pac` |
+| Physical memory map and boot contract | `soc` |
 | CPU-level operations | `arch` |
-| Installed DDR geometry, board hardware | `boards` |
+| Board wiring, handoff data and initialization | `sidermux-bsp` |
 | Boot arena and reserved ranges | boot profile (`sidermux-bootloader`) |
 | Application section destinations | application linker script |
+
+The selected PAC is re-exported as `soc::cyclone_v::pac`. Acquire its
+`Peripherals` once and pass owned or borrowed handles to the HAL. UART
+construction is `Uart::new(peripherals.uart0, clock_hz, baud)`; arbitrary
+integer UART bases are no longer accepted. `early_boot::BootSupport` owns
+reset-manager, timer0 and watchdog handles across initialization and idle.
 
 ## Usage
 

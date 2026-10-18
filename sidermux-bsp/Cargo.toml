@@ -1,0 +1,18 @@
+[package]
+name = "sidermux-bsp"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95.0"
+description = "Board support and initialization for sidermux"
+repository = "https://github.com/sidermux/sidermux-hal"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+board-de1-soc = ["sidermux-hal/cyclone-v"]
+
+[dependencies]
+sidermux-hal = { path = "../sidermux-hal", version = "0.1.0", default-features = false }
+
+[package.metadata.docs.rs]
+all-features = true

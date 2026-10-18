@@ -12,7 +12,7 @@
   </picture>
 
   <p>
-    <strong>Bootable image flow for sidermux targets; SoC boot profiles live here.</strong>
+    <strong>Bootable images for sidermux targets.</strong>
   </p>
 
   <p>
@@ -33,17 +33,18 @@ Cyclone V Boot ROM handoff; it is the adapter, not a portable ABI.
 ## Quick start
 
 ```sh
-cargo build -p sidermux-bootloader --target armv7a-none-eabi --features cyclone-v
+cargo build -p sidermux-bootloader --target armv7a-none-eabi --features board-de1-soc
 ```
 
-## SoC selection
+## Board selection
 
-Exactly one SoC feature is required; a build without one fails with an
-explicit error rather than linking a broken image.
+The bootloader requires `board-de1-soc`, which enables the DE1-SoC BSP
+and ARMv7-A runtime.
 
 | Feature | Effect |
 |---|---|
-| `cyclone-v` | Builds the Cyclone V boot image (forwards `sidermux-hal/cyclone-v` and `sidermux-rt/armv7a`) |
+| `board-de1-soc` | Selects DE1-SoC board data and enables `cyclone-v` |
+| `cyclone-v` | Selects the boot profile and `sidermux-rt/armv7a` |
 
 ## Boot profiles
 
@@ -51,7 +52,7 @@ explicit error rather than linking a broken image.
 ld/linkall.x              # application layout, generic over staged names
 ld/profiles/cyclone-v/    # boot contract: vectors, header slot, entry
                           # slot, size limits, trailer reservation
-src/profiles/cyclone-v/   # matching entry assembly
+src/profiles/cyclone-v/   # Boot ROM entry assembly
 ```
 
 Profiles stage under uniform names (`sidermux-boot.x`,
@@ -59,6 +60,24 @@ Profiles stage under uniform names (`sidermux-boot.x`,
 per-SoC. The Cyclone V profile loads at `0xFFFF0000` with vectors at the
 image base, a Boot ROM header slot at `+0x40`, the handoff entry at
 `+0x4C`, 16-byte packaging, and a 60 KiB arena.
+
+DE1-SoC initialization lives in `sidermux-bsp/src/de1_soc.rs`. It services
+inherited watchdogs, freezes I/O, configures clocks and the matching IOCSR
+and pinmux handoff, releases UART0 reset, thaws I/O and initializes the
+console. The bootloader prints one startup banner, then idles while servicing
+watchdogs through an owned BSP `Board`. The BSP acquires peripheral handles
+once; UART0 moves into its HAL driver. `BOOT_STATUS` preserves the initial reset cause and any typed
+initialization error for debugger inspection. Unexpected panics record a failure
+without stealing peripheral handles; an inherited watchdog can then reset the system.
+
+The DE1-SoC reference data and provenance live in
+`sidermux-bsp/src/de1_soc/`. Run the BSP checks with
+`cargo test -p sidermux-bsp --all-features`. The BSP boot path was verified on DE1-SoC on 2026-10-18 at 115200
+baud: startup banner received, no recorded boot error, scan busy/FIFO status
+clear, required banks thawed, UART0 reset released, all 207 pinmux entries
+matching, and watchdog0 serviced. IOCSR and thawing have not been isolated
+as independent causes of the original TX failure. Clock rates remain
+register-derived; no instrument-based bit-time measurement was made.
 
 Part of the [sidermux-hal](https://github.com/sidermux/sidermux-hal)
 workspace, with [`sidermux-hal`](https://docs.rs/sidermux-hal) and

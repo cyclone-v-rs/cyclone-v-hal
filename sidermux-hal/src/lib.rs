@@ -1,14 +1,15 @@
 //! Unified bare-metal HAL for SoC FPGAs: one interface across supported
-//! architectures, SoCs, and boards. New hardware is added as a module behind
+//! architectures and SoCs. New hardware is added as a module behind
 //! a feature flag, not as a new project.
 //!
 //! ## Responsibility split
 //!
 //! | Concern | Owner |
 //! |---|---|
-//! | Physical addresses and capacities | [`soc`] support |
+//! | Peripheral register maps and access types | `sidermux-pac` |
+//! | Physical memory maps and boot contracts | [`soc`] support |
 //! | CPU-level operations | [`arch`] support |
-//! | Installed DDR geometry, board hardware | [`boards`] support |
+//! | Installed DDR geometry, board hardware | `sidermux-bsp` |
 //! | Boot arena and reserved ranges | boot profile (`sidermux-bootloader`) |
 //! | Application section destinations | application linker script |
 //!
@@ -34,5 +35,4 @@
 #![no_std]
 
 pub mod arch;
-pub mod boards;
 pub mod soc;

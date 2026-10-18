@@ -14,10 +14,14 @@
 //! `sidermux-rt` and is independent of the incoming registers.
 
 pub mod clocks;
-pub mod pac;
-pub mod pinmux;
+pub use sidermux_pac::cyclone_v as pac;
+pub mod early_boot;
 pub mod reset;
+pub mod scanmgr;
+pub mod system_manager;
+pub mod timer;
 pub mod uart;
+pub mod watchdog;
 
 /// Base of the OCRAM window the Boot ROM loads the boot image into.
 pub const BOOT_IMAGE_BASE: usize = 0xFFFF_0000;
@@ -27,31 +31,3 @@ pub const BOOT_HEADER_OFFSET: usize = 0x40;
 pub const BOOT_ENTRY_OFFSET: usize = 0x4C;
 /// Boot arena currently sized by the Cyclone V boot profile.
 pub const BOOT_ARENA_SIZE: usize = 60 * 1024;
-
-/// Disable the watchdog left running by the Boot ROM.
-///
-/// The Cyclone V Boot ROM hands control over with the HPS watchdog running;
-/// any lengthy initialization without servicing it resets the system. This
-/// is intended to be the first HAL operation a bootloader invokes.
-///
-/// Sequence: service the counter (`WDT_CRR` restart magic), then clear the
-/// enable bit in `WDT_CR`.
-///
-/// TODO(datasheet): confirm whether the Boot ROM engages the watchdog's
-/// permutation lock (`WDT_PER` keying); this sequence assumes the
-/// unlocked DesignWare-style register behavior.
-pub fn watchdog_disable() {
-    unsafe {
-        let control = core::ptr::read_volatile((WDT0_BASE + WDT0_CR) as *const u32);
-        core::ptr::write_volatile((WDT0_BASE + WDT0_CRR) as *mut u32, WDT_RESTART_MAGIC);
-        core::ptr::write_volatile((WDT0_BASE + WDT0_CR) as *mut u32, control & !0x1);
-    }
-}
-
-/// Base of HPS Watchdog Timer 0 (DesignWare-style register block).
-const WDT0_BASE: usize = 0xFFD0_2000;
-/// Offset of `WDT_CR` (control; bit 0 enables the watchdog).
-const WDT0_CR: usize = 0x00;
-/// Offset of `WDT_CRR` (counter restart; `0x76` services the counter).
-const WDT0_CRR: usize = 0x0C;
-const WDT_RESTART_MAGIC: u32 = 0x76;

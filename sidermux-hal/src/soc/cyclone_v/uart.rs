@@ -1,21 +1,12 @@
 //! Polling UART driver for the DesignWare/16550-compatible HPS UARTs.
 //!
-//! Owns baud configuration, framing, and FIFO setup; the caller supplies the
-//! reference frequency (from [`super::clocks`]), proof that pins are routed
-//! (`P`), and proof that the peripheral is out of reset (construction order
-//! in the bootloader). Interrupts stay disabled; hardware flow control stays
-//! disabled. All waiting is bounded by an explicitly documented iteration
-//! budget so a wrong clock or reset configuration fails with
-//! [`UartError::Timeout`] instead of hanging forever.
+//! The caller supplies an owned UART peripheral handle and register-derived L4 SP frequency,
+//! after configuring board pins, releasing reset, and thawing I/O. Interrupts
+//! and hardware flow control stay disabled. All transmit waits are bounded.
 
-use core::ptr;
+use sidermux_pac::prelude::*;
 
-use super::pac::uart as pac;
-
-/// UART0 peripheral token.
-pub const UART0: usize = pac::UART0_BASE;
-/// UART1 peripheral token.
-pub const UART1: usize = pac::UART1_BASE;
+use super::pac::uart::{self as pac, Instance};
 
 /// Bounded-polling budget in CPU iterations. Not time-based: until a timer
 /// exists this budget only has to exceed the slowest expected hardware event
@@ -27,12 +18,9 @@ const POLL_ITERATION_BUDGET: u32 = 1_000_000;
 const MAX_BAUD_ERROR_PPM: u64 = 20_000;
 
 /// A configured polling UART.
-///
-/// Constructed through [`Uart::new`], which consumes the board's pin token,
-/// so a UART cannot exist while its pins are unrouted.
 #[derive(Debug)]
-pub struct Uart {
-    base: usize,
+pub struct Uart<P: Instance> {
+    peripheral: P,
 }
 
 /// Driver errors.
@@ -54,56 +42,48 @@ pub enum UartError {
     Overrun,
 }
 
-impl Uart {
+impl<P: Instance> Uart<P> {
     /// Configures the UART for 8N1 polling with FIFOs enabled.
     ///
-    /// `base` is one of the peripheral tokens ([`UART0`], [`UART1`]); `pins`
-    /// is the board's proof that the peripheral's pins are routed;
-    /// `uart_clk_hz` is the reference frequency (L4 SP clock); `baud` is the
-    /// requested rate.
-    pub fn new<P>(base: usize, _pins: P, uart_clk_hz: u32, baud: u32) -> Result<Self, UartError> {
-        let (divisor, _achievable) = divisor_for(uart_clk_hz, baud)?;
+    /// The peripheral token selects UART0 or UART1. Pins, clocks and reset must
+    /// already be configured by the caller.
+    pub fn new(peripheral: P, uart_clk_hz: u32, baud: u32) -> Result<Self, UartError> {
+        let (divisor, _) = divisor_for(uart_clk_hz, baud)?;
+        Ok(Self::configure_regs(peripheral, divisor))
+    }
 
-        let write = |offset: usize, value: u32| unsafe {
-            ptr::write_volatile((base + offset) as *mut u32, value);
-        };
-        let read =
-            |offset: usize| -> u32 { unsafe { ptr::read_volatile((base + offset) as *const u32) } };
-
+    /// Register sequence: interrupts off, DLAB
+    /// write of the divisor, 8N1, FIFO enable + clear, flow control off.
+    fn configure_regs(peripheral: P, divisor: u16) -> Self {
+        let registers = peripheral.registers();
         // Disable UART interrupts before anything else touches the block.
-        write(pac::REG_IER_DLM, pac::IER_DISABLE_ALL);
+        registers.interrupt.set(pac::IER_DISABLE_ALL);
 
         // Divisor latches share slots with data/interrupt registers: set
         // DLAB, write low/high, then clear DLAB while selecting 8N1.
-        let lcr = read(pac::REG_LCR);
-        write(pac::REG_LCR, lcr | pac::LCR_DLAB);
-        write(pac::REG_RBR_THR_DLL, u32::from(divisor as u8));
-        write(pac::REG_IER_DLM, u32::from((divisor >> 8) as u8));
-        write(pac::REG_LCR, pac::LCR_8N1);
+        let lcr = registers.line_control.get();
+        registers.line_control.set(lcr | pac::LCR_DLAB);
+        registers.data.set(u32::from(divisor as u8));
+        registers.interrupt.set(u32::from((divisor >> 8) as u8));
+        registers.line_control.set(pac::LCR_8N1);
 
         // Enable FIFOs and clear both, then settle on plain FIFO mode with
         // the smallest receive trigger (polling reads single bytes anyway).
-        write(
-            pac::REG_IIR_FCR,
-            pac::FCR_FIFO_ENABLE | pac::FCR_RX_FIFO_RESET | pac::FCR_TX_FIFO_RESET,
-        );
-        write(pac::REG_IIR_FCR, pac::FCR_FIFO_ENABLE);
+        registers
+            .fifo
+            .set(pac::FCR_FIFO_ENABLE | pac::FCR_RX_FIFO_RESET | pac::FCR_TX_FIFO_RESET);
+        registers.fifo.set(pac::FCR_FIFO_ENABLE);
 
         // Hardware flow control (and its auto mode) stays disabled.
-        write(pac::REG_MCR, 0x0);
+        registers.modem_control.set(0x0);
 
-        Ok(Self { base })
+        Self { peripheral }
     }
 
     /// Waits for transmitter capacity, then writes one byte.
     pub fn write_byte(&mut self, byte: u8) -> Result<(), UartError> {
         self.wait_for(pac::LSR_THRE)?;
-        unsafe {
-            ptr::write_volatile(
-                (self.base + pac::REG_RBR_THR_DLL) as *mut u32,
-                u32::from(byte),
-            );
-        }
+        self.peripheral.registers().data.set(u32::from(byte));
         Ok(())
     }
 
@@ -113,12 +93,7 @@ impl Uart {
         if lsr & pac::LSR_THRE == 0 {
             return Ok(false);
         }
-        unsafe {
-            ptr::write_volatile(
-                (self.base + pac::REG_RBR_THR_DLL) as *mut u32,
-                u32::from(byte),
-            );
-        }
+        self.peripheral.registers().data.set(u32::from(byte));
         Ok(true)
     }
 
@@ -128,8 +103,7 @@ impl Uart {
         if lsr & pac::LSR_DATA_READY == 0 {
             return Ok(None);
         }
-        let byte =
-            unsafe { ptr::read_volatile((self.base + pac::REG_RBR_THR_DLL) as *const u32) as u8 };
+        let byte = self.peripheral.registers().data.get() as u8;
         Ok(Some(byte))
     }
 
@@ -148,7 +122,7 @@ impl Uart {
 
     /// Reads the line status register, folding error bits into typed errors.
     fn lsr(&self) -> Result<u32, UartError> {
-        let lsr = unsafe { ptr::read_volatile((self.base + pac::REG_LSR) as *const u32) };
+        let lsr = self.peripheral.registers().line_status.get();
         // A break reads as an all-zero frame and sets both bits; report the
         // most specific condition first.
         if lsr & pac::LSR_BREAK != 0 {
@@ -179,7 +153,7 @@ impl Uart {
     }
 }
 
-impl core::fmt::Write for Uart {
+impl<P: Instance> core::fmt::Write for Uart<P> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         self.write_all(s.as_bytes()).map_err(|_| core::fmt::Error)
     }

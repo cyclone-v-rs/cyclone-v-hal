@@ -2,6 +2,7 @@
 name = "sidermux-bootloader"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.95.0"
 description = "Bootable image flow for sidermux targets"
 repository = "https://github.com/sidermux/sidermux-hal"
 license = "MIT OR Apache-2.0"
@@ -14,12 +15,16 @@ test  = false
 
 [features]
 # SoC selection for the bootable image. Exactly one is required; each SoC
-# feature forwards the SoC and architecture selection to the HAL and runtime.
-cyclone-v = ["sidermux-hal/cyclone-v", "sidermux-rt/armv7a"]
+# feature selects its boot profile and runtime architecture.
+cyclone-v = ["sidermux-rt/armv7a"]
 
 # Board selection: implies its SoC and forwards the board configuration.
-board-de1-soc = ["cyclone-v", "sidermux-hal/board-de1-soc"]
+board-de1-soc = ["cyclone-v", "sidermux-bsp/board-de1-soc"]
 
 [dependencies]
-sidermux-hal = {path = "../sidermux-hal"}
-sidermux-rt = {path = "../sidermux-rt"}
+sidermux-bsp = { path = "../sidermux-bsp", version = "0.1.0", default-features = false }
+sidermux-rt = { path = "../sidermux-rt", version = "0.1.0" }
+
+[package.metadata.docs.rs]
+targets = ["armv7a-none-eabi"]
+features = ["board-de1-soc"]
